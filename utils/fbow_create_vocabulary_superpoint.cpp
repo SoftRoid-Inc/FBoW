@@ -1,66 +1,56 @@
-/**
-
-The MIT License
-
-Copyright (c) 2017 Rafael Muñoz-Salinas
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-*/
-
-/*
-fbow_dump_features.cppなどを用いてバイナリファイルに格納した特徴量を呼び出し，
-Vocabulary fileを作成する
-*/
-
 #include "cmd_line_parser.h"
 #include "vocabulary_creator.h"
+#include "json.hpp"
+#include "dir_reader.h"
 
 #include <iostream>
 #include <fstream>
 #include <vector>
 
 #include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
 
-std::vector<cv::Mat> readFeaturesFromFile(const std::string& filename, std::string& desc_name) {
+std::vector<cv::Mat> readSuperpointFeaturesFromFile(const std::vector<std::string>& path_to_msgs, std::string& desc_name) {
     std::vector<cv::Mat> features;
-    std::ifstream ifile(filename, std::ios::binary);
-    if (!ifile.is_open()) {
-        std::cerr << "could not open the input file: " << filename << std::endl;
-        exit(EXIT_FAILURE);
+    desc_name = "Superpoint";
+
+    std::cout << "extracting features ..." << std::endl;
+    for (const auto& path_to_msg : path_to_msgs) {
+        std::cout << "reading msg: " << path_to_msg << std::endl;
+        // Load msg binary file
+        std::ifstream ifs(path_to_msg, std::ios::in | std::ios::binary);
+        if (!ifs.is_open()) {
+            std::cerr << "could not open msg: " << path_to_msg << std::endl;
+            continue;
+        }
+        std::vector<uint8_t> msgpack;
+        while (true) {
+            uint8_t buffer;
+            ifs.read(reinterpret_cast<char*>(&buffer), sizeof(uint8_t));
+            if (ifs.eof()) {
+                break;
+            }
+            msgpack.push_back(buffer);
+        }
+        ifs.close();
+
+        // Convert msg binary file to json
+        const auto json = nlohmann::json::from_msgpack(msgpack);
+        // Load keypoints and descriptors from json into vector
+        const auto json_descs = json.at("descriptors");
+        std::vector<std::vector<std::vector<float>>> descs_vecs = json_descs.get<std::vector<std::vector<std::vector<float>>>>();
+        
+        // Convert features from vector to cv::Mat type
+        cv::Mat feature = cv::Mat::zeros(descs_vecs[0].size(), 256, CV_32F);
+        for (unsigned int i = 0; i < descs_vecs[0].size(); i++) {
+            for (unsigned int j = 0; j < 256; ++j) {
+                feature.at<float>(i, j) = descs_vecs[0][i][j];
+            }
+        }
+        std::cout << "extracted features: total = " << descs_vecs[0].size() << std::endl;
+        features.push_back(feature);
     }
 
-    char _desc_name[20];
-    ifile.read(_desc_name, 20);
-    desc_name = _desc_name;
-
-    uint32_t size;
-    ifile.read((char*) &size, sizeof(size));
-    features.resize(size);
-    for (size_t i = 0; i < size; i++) {
-        uint32_t cols, rows, type;
-        ifile.read((char*)&cols, sizeof(cols));
-        ifile.read((char*)&rows, sizeof(rows));
-        ifile.read((char*)&type, sizeof(type));
-        features[i].create(rows, cols, type);
-        ifile.read((char*)features[i].ptr<uchar>(0), features[i].total() * features[i].elemSize());
-    }
     return features;
 }
 
@@ -68,7 +58,7 @@ int main(int argc, char** argv) {
     try {
         CmdLineParser cml(argc, argv);
         if (cml["-h"] || argc < 3) {
-            std::cerr << "Usage: FEATURE_INPUT OUTPUT_VOCABULARY [-k K] [-l L] [-t NUM_THREADS] [--max-iters NUM_ITER] [-v]" << std::endl;
+            std::cerr << "Usage: FEATURE_INPUT_DIR OUTPUT_VOCABULARY [-k K] [-l L] [-t NUM_THREADS] [--max-iters NUM_ITER] [-v]" << std::endl;
             std::cerr << std::endl;
             std::cerr << "Second step is creating the vocabulary of K^L from the set of features." << std::endl;
             std::cerr << "By default, we employ a random selection center without running a single iteration of the k means." << std::endl;
@@ -78,7 +68,8 @@ int main(int argc, char** argv) {
         }
 
         std::string desc_name;
-        auto features = readFeaturesFromFile(argv[1], desc_name);
+        auto msgs = DirReader::read(argv[1]);
+        auto features = readSuperpointFeaturesFromFile(msgs, desc_name);
 
         std::cout << "descriptor name: " << desc_name << std::endl;
         std::cout << "num of features: " << features.size() << std::endl;

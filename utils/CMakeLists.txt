@@ -24,13 +24,18 @@
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 include_directories(${PROJECT_SOURCE_DIR}/include/fbow)
+include_directories(${PROJECT_SOURCE_DIR}/include/nlohmann)
 
 add_executable(fbow_dump_features fbow_dump_features.cpp)
 add_executable(fbow_create_vocabulary fbow_create_vocabulary.cpp)
 add_executable(fbow_transform fbow_transform.cpp)
+add_executable(fbow_create_vocabulary_superpoint fbow_create_vocabulary_superpoint.cpp)
+add_executable(fbow_transform_superpoint fbow_transform_superpoint.cpp)
 
 target_link_libraries(fbow_dump_features ${OpenCV_LIBS})
 target_link_libraries(fbow_create_vocabulary ${OpenCV_LIBS} fbow)
 target_link_libraries(fbow_transform ${OpenCV_LIBS} fbow)
+target_link_libraries(fbow_create_vocabulary_superpoint ${OpenCV_LIBS} fbow)
+target_link_libraries(fbow_transform_superpoint ${OpenCV_LIBS} fbow)
 
-install(TARGETS fbow_dump_features fbow_create_vocabulary fbow_transform RUNTIME DESTINATION bin)
+install(TARGETS fbow_dump_features fbow_create_vocabulary fbow_transform fbow_create_vocabulary_superpoint fbow_transform_superpoint RUNTIME DESTINATION bin)

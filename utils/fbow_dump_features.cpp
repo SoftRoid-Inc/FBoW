@@ -24,6 +24,11 @@ THE SOFTWARE.
 
 */
 
+/*
+指定したディレクトリ内のすべての画像に対して，指定した特徴量を抽出し，
+その結果をバイナリファイルに保存する
+*/
+
 #include "cmd_line_parser.h"
 #include "dir_reader.h"
 
